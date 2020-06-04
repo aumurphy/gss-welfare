@@ -1,0 +1,303 @@
+---
+title: "Welfare Survey Analysis"
+author: "Austin Murphy"
+date: "6/3/2020"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    theme: united
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE)
+
+library(here)       # File location
+library(ggplot2)    # Plotting
+library(dplyr)      # Data Manip
+```
+
+Studying the Welfare data.
+
+More info: http://gss.norc.org/Documents/reports/social-change-reports/SC61%20GSS_Trends%20in%20Spending_1973-2016.pdf
+
+Variable info: https://gssdataexplorer.norc.org/variables/vfilter
+
+wrkstat: Labor force status: Last week were you working full time, part time, going to school, keeping house, or what?
+prestg80: Respondents occupational prestige score (1980)
+hompop: Number of people in the household
+
+Race questions
+On the average (Negroes/Blacks/African-Americans) have worse jobs, income, and housing than white people. Do you think these differences are mainly due to 
+racdif1: Discrimination?
+racdif2: Because most (Negroes/Blacks/African-Americans) have less in-born ability to learn?
+racdif3: Because most (Negroes/Blacks/African-Americans) don't have the chance for education that it takes to rise out of poverty?
+racdif4: Because most (Negroes/Blacks/African-Americans) just don't have the motivation or will power to pull themselves up out of poverty?
+attblack is an average of the four variables above. 
+
+natfare: Welfare vs assistance to the poor. This is the name of the variable on the GSS website converted into Y in this dataset. 
+
+natrace{y}: 
+
+Questions associated with this variable:
+We are faced with many problems in this country, none of which can be solved easily or inexpensively. I'm going to name some of these problems, and for each one I'd like you to name some of these problems, and for each one I'd like you to tell me whether you think we're spending too much money on it, too little money, or about the right amount. First (READ ITEM A) . . . are we spending too much, too little, or about the right amount on (ITEM)?
+H. Improving the conditions of Blacks VS
+H. Assistance to blacks
+
+Similar style to the Welfare/Assistance to the Poor question. 
+
+
+
+
+```{r loaddata}
+# Downloading script
+# df <- readr::read_csv(file = "https://raw.githubusercontent.com/gsbDBI/ExperimentData/master/Welfare/ProcessedData/welfarenolabel3.csv", na = character())
+# readr::write_csv(df, here::here("data/welfare.csv"))
+
+df <- readr::read_csv(file = here::here("data","welfare.csv"), na = character())
+
+# Specify outcome, treatment, and covariate variable names to use
+outcome_variable_name <- "y"
+treatment_variable_name <- "w"
+covariate_names <- c("partyid", "hrs1", "income", "rincome", "wrkstat", "wrkslf","age", "polviews",
+                     "educ", "earnrs","wrkslf", "year", # don't include year
+                     "marital","sibs","childs", "occ80",  "prestg80", "indus80","res16",
+                     "reg16","mobile16", "family16", "parborn","maeduc","degree","sex",
+                     "race","born","hompop","babies","preteen","teens","adults","attblack")
+
+
+# Combine all names
+all_variables_names <- c(outcome_variable_name, treatment_variable_name, covariate_names)
+df <- df[, which(names(df) %in% all_variables_names)]
+
+# Rename variables
+names(df)[names(df) == outcome_variable_name] <- "Y"
+names(df)[names(df) == treatment_variable_name] <- "W"
+
+dim(df)
+head(df)
+colnames(df)
+```
+
+
+```{r data_cleaning}
+# Tried a couple iterations of this to remove missing or 'other' values 
+df <-
+  df %>%
+  filter(partyid != -999,  # missing
+         partyid != 7,     # 7 represents "other party"
+         polviews != -999, # missing
+         polviews != 0,    # 0 represents "not applicable" according to norc.org
+         year != 1987,     # year not included in paper
+         attblack != -999, # missing
+         educ != -999,     # missing
+         income != -999)   # missing
+```
+
+```{r}
+# Percent of rows that are -999 | NA
+round(colSums(df == -999)/dim(df)[1],2)
+colSums(df == -999)
+```
+
+
+```{r}
+mean(df$Y[df$W == 1]) - mean(df$Y[df$W == 0])
+# W==1: "Caring for the poor" wording
+# W==0: "Welfare" wording. 
+
+janitor::tabyl(df, year, W) %>%
+  arrange(year) %>%
+  janitor::adorn_totals()
+
+```
+
+I'm not sure why this doesn't match up with the Table 1 in the paper. 
+
+Split into training / test
+
+```{r}
+set.seed(1)
+N <- dim(df)[1]
+num_train <- floor(N*.8)
+train_idx <- sample(x=seq(N), size = num_train, replace = FALSE)
+
+train <- df[train_idx,]
+test <- df[-train_idx,]
+```
+
+GRF / causal forest:
+
+```{r}
+# library(grf)
+# X <- as.matrix(train[,c(covariate_names)])
+# Y <- train$Y
+# W <- train$W
+# 
+# X.test <- as.matrix(test[,c(covariate_names)])
+# Y.test <- test$Y
+# W.test <- test$W
+# 
+# cf = grf::causal_forest(X=X, 
+#                         Y=Y, 
+#                         W=W, 
+#                         num.trees = 100) 
+# preds.cf = predict(cf, X.test)$predictions
+```
+
+```{r propensity_histogram}
+# ggplot(data.frame(W.hat = cf$W.hat, W = factor(cf$W.orig))) +
+#  geom_histogram(aes(x = W.hat, y = stat(density), fill = W), alpha=0.3, position = "identity") +
+#  geom_density(aes(x = W.hat, color = W)) +
+#  xlim(0,1) +
+#  labs(title = "Causal forest propensity scores",
+#       caption = "The propensity scores are learned via GRF's regression forest")
+```
+
+```{r}
+# oob_pred <- predict(cf, estimate.variance=TRUE)
+# head(oob_pred)
+```
+
+
+```{r}
+# hist(preds.cf)
+```
+
+
+```{r}
+####### BART
+# bayesTrees - original package from paper authors
+# bartMachine
+# BART package - from authors
+```
+
+The paper used a probit BART model to estimate CATE because the response is binary. 
+
+Can I replicate the findings in the paper?
+
+```{r}
+# library(BART)
+library(BayesTree)
+train <- df
+
+summary(train$partyid)
+table(train$partyid)
+
+# prep 'test' data
+n = dim(train)[1]
+test0 = train %>% select(-Y); test0[ , 'partyid'] = 4; test0[ , 'W'] = 0
+test1 = train %>% select(-Y); test1[ , 'partyid'] = 4; test1[ , 'W'] = 1
+
+test_bart = rbind(test0, test1)
+
+set.seed(1)
+# bart =  BART::pbart(x.train = as.data.frame(train %>% select(-Y)),
+#                     y.train = train$Y,
+#                     x.test = as.data.frame(test_bart),
+#                     nskip = 1000)
+bart =  BayesTree::bart(x.train = as.data.frame(train %>% select(-Y)),
+                        y.train = train$Y,
+                        x.test = as.data.frame(test_bart),
+                        nskip = 1000)
+
+```
+
+```{r}
+dim(test_bart)
+length(bart$prob.test.mean)
+
+## turn z-scores into probabilities
+bart$prob.test <- pnorm(bart$yhat.test)
+## average over the posterior samples
+bart$prob.test.mean <- apply(bart$prob.test, 2, mean)
+
+## place estimates for arms 0-3 next to each other for convenience
+itr <- cbind(bart$prob.test.mean[(1:n)], bart$prob.test.mean[n+(1:n)])
+
+mean(itr[,2] - itr[,1])
+itr_order = (itr[,1] - itr[,2])[order(itr[,1] - itr[,2])]
+quantile(itr_order, 0.025)
+quantile(itr_order, 0.975)
+```
+
+more easily create test matrices:
+
+```{r}
+library(BART)
+
+# create covariate and treatment vectors
+table(train$partyid)
+covariate_levels = unique(train$partyid)[order(unique(train$partyid))]
+num_levels = length(covariate_levels)
+treatment_values = c(0,1)
+test_design = cbind(rep(covariate_levels,each=2), rep(treatment_values,times=num_levels))
+
+# prep 'test' data
+n = dim(train)[1]
+column_name = 'partyid'
+test_bart = NULL
+for (i in 1:dim(test_design)[1]){
+  test0 = train %>% select(-Y)
+  test0[ , column_name] = test_design[i,1]
+  test0[ , 'W'] = test_design[i,2]
+  
+  test_bart=rbind(test_bart,test0)
+}
+dim(test_bart)
+
+set.seed(1)
+bart =  BART::pbart(x.train = as.data.frame(train %>% select(-Y)),
+                    y.train = train$Y,
+                    x.test = as.data.frame(test_bart),
+                    nskip = 1000)
+```
+
+```{r}
+dim(test_bart)
+length(bart$prob.test.mean)
+
+## turn z-scores into probabilities
+bart$prob.test <- pnorm(bart$yhat.test)
+## average over the posterior samples
+bart$prob.test.mean <- apply(bart$prob.test, 2, mean)
+
+## place estimates for arms 0-3 next to each other for convenience
+temp = rep(1:dim(test_design)[1],each=n)
+list_split = split(bart$prob.test.mean, temp)
+lengths(list_split)
+
+estimates = data.frame(matrix(NA,num_levels,4))
+estimates[,1] = covariate_levels
+names(estimates) <- c("covariate_val","mean","low","high")
+for (i in 1:dim(estimates)[1]){
+  covariate_val = 2*i-1
+  cate = list_split[[covariate_val]] - list_split[[covariate_val+1]] 
+  cate = cate[order(cate)]
+  estimates[i,"mean"] = mean(cate)
+  estimates[i,"low"] = quantile(cate, 0.025)
+  estimates[i,"high"] = quantile(cate, 0.975)
+}
+estimates
+
+ggplot(estimates, aes(x = covariate_levels, y = mean)) + 
+  geom_line() + 
+  geom_point() + 
+  geom_ribbon(aes(ymin=low,ymax=high),alpha=0.3) + 
+  ggtitle("CATE Estimate",column_name) + 
+  xlab(column_name) + 
+  ylab("CATE") +
+  scale_x_continuous(breaks=covariate_levels,
+        labels=c("Strong Dem","","","Independent","","","Strong Rep"))
+```
+
+```{r}
+c("hi","","bye")
+```
+
+
+
