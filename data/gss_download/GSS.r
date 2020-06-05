@@ -34,108 +34,109 @@ GSS_ascii <- read.dat("data/gss_download/GSS.dat", GSS_metadata)
 attr(GSS_ascii, "col.label") <- GSS_metadata[["ColLabel"]]
 GSS <- GSS_ascii # has 64814 observations
 
-GSS <- GSS[GSS$YEAR>=1986,]
-# GSS <- GSS[GSS$YEAR!=1987,]
-GSS = GSS[GSS$YEAR <= 2010,]
+names(GSS) <- tolower(names(GSS))
+names(GSS)[names(GSS)=='id_'] <- 'id'
 
-table(GSS$YEAR)
-table(df$year)
+GSS <- GSS[GSS$year>=1986,]
+# GSS <- GSS[GSS$year!=1987,]
+GSS = GSS[GSS$year <= 2010,]
 
-sum(table(GSS$ID_) != table(df$id))
-sum(table(GSS$YEAR) != table(df$year))
+# sanity check
+all(table(GSS$year) == table(df$year))
+sum(table(GSS$id) != table(df$id))      # IDs match up
+sum(table(GSS$year) != table(df$year))  # years match up
 
 # natfare: 
 # 0 - not applicable
 # 3 - Too much
-
-GSS$NATFARE[GSS$NATFARE %in% c(1,2,8,9)] <- 9
-GSS$NATFARE[GSS$NATFARE == 3] <- 1
-GSS$NATFARE[GSS$NATFARE == 0] <- -999
-GSS$NATFARE[GSS$NATFARE == 9] <- 0
-table(GSS$NATFARE)
+table(GSS$natfare)
+GSS$natfare[GSS$natfare %in% c(1,2,8,9)] <- 9
+GSS$natfare[GSS$natfare == 3] <- 1
+GSS$natfare[GSS$natfare == 0] <- -999
+GSS$natfare[GSS$natfare == 9] <- 0
+table(GSS$natfare)
 
 
 # natfarey: 
 # 0 - not applicable
 # 3 - Too much
-table(GSS$NATFAREY)
-GSS$NATFAREY[GSS$NATFAREY %in% c(1,2,8,9)] <- 9
-GSS$NATFAREY[GSS$NATFAREY == 3] <- 1
-GSS$NATFAREY[GSS$NATFAREY == 0] <- -999
-GSS$NATFAREY[GSS$NATFAREY == 9] <- 0
-table(GSS$NATFAREY)
+table(GSS$natfarey)
+GSS$natfarey[GSS$natfarey %in% c(1,2,8,9)] <- 9
+GSS$natfarey[GSS$natfarey == 3] <- 1
+GSS$natfarey[GSS$natfarey == 0] <- -999
+GSS$natfarey[GSS$natfarey == 9] <- 0
+table(GSS$natfarey)
 
 # natrace: 
 # 0 - not applicable
 # 3 - too much
-
-table(GSS$NATRACE)
-GSS$NATRACE[GSS$NATRACE %in% c(1,2,8,9)] <- 9
-GSS$NATRACE[GSS$NATRACE == 3] <- 1
-GSS$NATRACE[GSS$NATRACE == 0] <- -999
-GSS$NATRACE[GSS$NATRACE == 9] <- 0
-table(GSS$NATRACE)
+table(GSS$natrace)
+GSS$natrace[GSS$natrace %in% c(1,2,8,9)] <- 9
+GSS$natrace[GSS$natrace == 3] <- 1
+GSS$natrace[GSS$natrace == 0] <- -999
+GSS$natrace[GSS$natrace == 9] <- 0
+table(GSS$natrace)
 
 # natracey: 
 # 0 - not applicable
 # 3 - too much
+table(GSS$natracey)
+GSS$natracey[GSS$natracey %in% c(1,2,8,9)] <- 9
+GSS$natracey[GSS$natracey == 3] <- 1
+GSS$natracey[GSS$natracey == 0] <- -999
+GSS$natracey[GSS$natracey == 9] <- 0
+table(GSS$natracey)
 
-table(GSS$NATRACEY)
-GSS$NATRACEY[GSS$NATRACEY %in% c(1,2,8,9)] <- 9
-GSS$NATRACEY[GSS$NATRACEY == 3] <- 1
-GSS$NATRACEY[GSS$NATRACEY == 0] <- -999
-GSS$NATRACEY[GSS$NATRACEY == 9] <- 0
-table(GSS$NATRACEY)
+head(GSS[, c("natrace", "natracey", "natfare", "natfarey")],10)
 
-head(GSS[, c("NATRACE", "NATRACEY", "NATFARE", "NATFAREY")],30)
-
-# sanity check: number of -999 in NATRACEY and NATFAREY should be equal, and should be the same rows
-sum(GSS$NATRACEY==-999) == sum(GSS$NATFAREY==-999)
-dim(GSS[GSS$NATRACEY==-999 & GSS$NATFAREY!=-999, ])[1] == 0 # should be zero
-dim(GSS[GSS$NATRACEY==-999 & GSS$NATFARE==-999, ])
+# sanity check: number of -999 in natracey and natfarey should be equal, and should be the same rows
+sum(GSS$natracey==-999) == sum(GSS$natfarey==-999)
+dim(GSS[GSS$natracey==-999 & GSS$natfarey!=-999, ])[1] == 0 # should be zero
+dim(GSS[GSS$natracey==-999 & GSS$natfare==-999, ])          # These are the question type Z, i think.
 
 # There is a third variant - Type Z. take these out. 
-# dim(GSS[GSS$NATRACEY!=-999 | GSS$NATFARE!=-999, ])
-# dim(GSS) - dim(GSS[GSS$NATRACEY==-999 & GSS$NATFARE==-999, ])
-# GSS <- GSS[GSS$NATRACEY!=-999 | GSS$NATFARE!=-999, ]
-# dim(GSS[GSS$NATRACEY!=-999 & GSS$NATFARE!=-999, ])[1] == 0 # should be zero
+# dim(GSS[GSS$natracey!=-999 | GSS$natfare!=-999, ])
+# dim(GSS) - dim(GSS[GSS$natracey==-999 & GSS$natfare==-999, ])
+# GSS <- GSS[GSS$natracey!=-999 | GSS$natfare!=-999, ]
+# dim(GSS[GSS$natracey!=-999 & GSS$natfare!=-999, ])[1] == 0 # should be zero
 
 # Assign treatment to 
-GSS$W = ifelse(GSS$NATRACEY==-999, 0, 1)
+GSS$W = ifelse(GSS$natracey==-999, 0, 1)
 table(GSS$W)
 
 # Responses: 
-GSS$Y_WELFARE = ifelse(GSS$NATFARE==-999,0,1) + ifelse(GSS$NATFAREY==-999,0,1)
-GSS$Y_WELFARE = GSS$NATFARE*(1-GSS$W) + GSS$NATFAREY*GSS$W
-GSS$Y_WELFARE[GSS$Y_WELFARE==-999] = 0
-table(GSS$Y_WELFARE)
-table(df$y)
+GSS$y_welfare = ifelse(GSS$natfare==-999,0,1) + ifelse(GSS$natfarey==-999,0,1)
+GSS$y_welfare = GSS$natfare*(1-GSS$W) + GSS$natfarey*GSS$W
+GSS$y_welfare[GSS$y_welfare==-999] = 0
+table(GSS$y_welfare)
+table(df$Y)
 
-GSS$Y_RACE = ifelse(GSS$NATRACE==-999,0,1) + ifelse(GSS$NATRACEY==-999,0,1)
-GSS$Y_RACE = GSS$NATRACE*(1-GSS$W) + GSS$NATRACEY*GSS$W
-GSS$Y_RACE[GSS$Y_RACE==-999] = 0
-table(GSS$Y_RACE)
-table(df$y)
+GSS$y_race = ifelse(GSS$natrace==-999,0,1) + ifelse(GSS$natracey==-999,0,1)
+GSS$y_race = GSS$natrace*(1-GSS$W) + GSS$natracey*GSS$W
+GSS$y_race[GSS$y_race==-999] = 0
+table(GSS$y_race)
 
 # merge on year, id and check if the Y's match up
 
 temp = 
   df %>%
-  left_join(GSS[, c("YEAR","ID_","Y_WELFARE","Y_RACE")] %>% 
-              rename(year = YEAR,id=ID_), 
+  left_join(GSS[, c("year","id","y_welfare","y_race")], 
             by=c('year','id'))
 
-temp[ , c('w',"y",'Y_WELFARE',"Y_RACE")]
-temp[temp$y != temp$Y_WELFARE,c("year","id",'w',"y","Y_WELFARE","Y_RACE")]
+temp %>% 
+  select(c(year, id, y_race)) %>%
+  readr::write_csv(here::here("data","black_assistance.csv"))
 
-temp
-table(temp$Y_RACE)
-table(temp$Y_WELFARE)
-table(temp$w, temp$Y_RACE)
-table(temp$w, temp$Y_WELFARE)
+readr::read_csv(here::here("data","black_assistance.csv"))
 
-GSS %>%
-  janitor::tabyl(YEAR, W)
+# temp
+# table(temp$y_race)
+# table(temp$y_welfare)
+# table(temp$W, temp$y_race)
+# table(temp$W, temp$y_welfare)
+# 
+# GSS %>%
+#   janitor::tabyl(year, W)
 
 # partyid:  7=other party, 8=don't know, 9=no answer (Scale is 0-6)
 # polviews: 0=not applicable, 8=don't know, 9=no answer (Scale is 1-7)
@@ -174,19 +175,4 @@ dim(GSS)
 colSums(df==-999)
 
 
-
-dim(GSS)[1] - (7836+7681)
-names(GSS)
-head(GSS)
-table(GSS$PARTYID)
-table(GSS$POLVIEWS)
-table(GSS$AGE)
-table(GSS$BALLOT)
-table(GSS$RACDIF1)
-table(GSS$RACDIF2)
-table(GSS$RACDIF3)
-table(GSS$RACDIF4)
-dim(GSS[GSS$RACDIF1!=0 & GSS$YEAR<=2010,])
-GSS %>%
-  janitor::tabyl(YEAR, W)
-
+# This isn't coming out to what the paper had......
