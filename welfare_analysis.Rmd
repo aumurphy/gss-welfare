@@ -19,6 +19,7 @@ knitr::opts_chunk$set(
 library(here)       # File location
 library(ggplot2)    # Plotting
 library(dplyr)      # Data Manip
+library(BART)
 ```
 
 Studying the Welfare data.
@@ -27,30 +28,23 @@ More info: http://gss.norc.org/Documents/reports/social-change-reports/SC61%20GS
 
 Variable info: https://gssdataexplorer.norc.org/variables/vfilter
 
-wrkstat: Labor force status: Last week were you working full time, part time, going to school, keeping house, or what?
-prestg80: Respondents occupational prestige score (1980)
-hompop: Number of people in the household
-
-Race questions
+**Covariates**
+- wrkstat: Labor force status: Last week were you working full time, part time, going to school, keeping house, or what?
+- prestg80: Respondents occupational prestige score (1980)
+- hompop: Number of people in the household
+  **Race questions**
 On the average (Negroes/Blacks/African-Americans) have worse jobs, income, and housing than white people. Do you think these differences are mainly due to 
-racdif1: Discrimination?
-racdif2: Because most (Negroes/Blacks/African-Americans) have less in-born ability to learn?
-racdif3: Because most (Negroes/Blacks/African-Americans) don't have the chance for education that it takes to rise out of poverty?
-racdif4: Because most (Negroes/Blacks/African-Americans) just don't have the motivation or will power to pull themselves up out of poverty?
+- racdif1: Discrimination?
+- racdif2: Because most (Negroes/Blacks/African-Americans) have less in-born ability to learn?
+- racdif3: Because most (Negroes/Blacks/African-Americans) don't have the chance for education that it takes to rise out of poverty?
+- racdif4: Because most (Negroes/Blacks/African-Americans) just don't have the motivation or will power to pull themselves up out of poverty?
 attblack is an average of the four variables above. 
 
-natfare: Welfare vs assistance to the poor. This is the name of the variable on the GSS website converted into Y in this dataset. 
-
-natrace{y}: 
-
+**Outcome Variables**
 Questions associated with this variable:
 We are faced with many problems in this country, none of which can be solved easily or inexpensively. I'm going to name some of these problems, and for each one I'd like you to name some of these problems, and for each one I'd like you to tell me whether you think we're spending too much money on it, too little money, or about the right amount. First (READ ITEM A) . . . are we spending too much, too little, or about the right amount on (ITEM)?
-H. Improving the conditions of Blacks VS
-H. Assistance to blacks
-
-Similar style to the Welfare/Assistance to the Poor question. 
-
-
+- natfare: Welfare vs assistance to the poor. This is the name of the variable on the GSS website converted into Y in this dataset. 
+- natrace{y}: Improving the conditions of Blacks VS Assistance to blacks
 
 
 ```{r loaddata}
@@ -59,12 +53,17 @@ Similar style to the Welfare/Assistance to the Poor question.
 # readr::write_csv(df, here::here("data/welfare.csv"))
 
 df <- readr::read_csv(file = here::here("data","welfare.csv"), na = character())
+black_assistance <- readr::read_csv(file = here::here("data","black_assistance.csv"))
+df <- 
+  df %>% 
+  dplyr::left_join(black_assistance)
+
 
 # Specify outcome, treatment, and covariate variable names to use
-outcome_variable_name <- "y"
+outcome_variable_name <- "y" # or y_race for the other outcome variable
 treatment_variable_name <- "w"
 covariate_names <- c("partyid", "hrs1", "income", "rincome", "wrkstat", "wrkslf","age", "polviews",
-                     "educ", "earnrs","wrkslf", "year", # don't include year
+                     "educ", "earnrs","wrkslf", "year", 
                      "marital","sibs","childs", "occ80",  "prestg80", "indus80","res16",
                      "reg16","mobile16", "family16", "parborn","maeduc","degree","sex",
                      "race","born","hompop","babies","preteen","teens","adults","attblack")
@@ -181,8 +180,6 @@ The paper used a probit BART model to estimate CATE because the response is bina
 Can I replicate the findings in the paper?
 
 ```{r}
-# library(BART)
-library(BayesTree)
 train <- df
 
 summary(train$partyid)
@@ -196,14 +193,10 @@ test1 = train %>% select(-Y); test1[ , 'partyid'] = 4; test1[ , 'W'] = 1
 test_bart = rbind(test0, test1)
 
 set.seed(1)
-# bart =  BART::pbart(x.train = as.data.frame(train %>% select(-Y)),
-#                     y.train = train$Y,
-#                     x.test = as.data.frame(test_bart),
-#                     nskip = 1000)
-bart =  BayesTree::bart(x.train = as.data.frame(train %>% select(-Y)),
-                        y.train = train$Y,
-                        x.test = as.data.frame(test_bart),
-                        nskip = 1000)
+bart =  BART::pbart(x.train = as.data.frame(train %>% select(-Y)),
+                    y.train = train$Y,
+                    x.test = as.data.frame(test_bart),
+                    nskip = 1000)
 
 ```
 
@@ -219,17 +212,15 @@ bart$prob.test.mean <- apply(bart$prob.test, 2, mean)
 ## place estimates for arms 0-3 next to each other for convenience
 itr <- cbind(bart$prob.test.mean[(1:n)], bart$prob.test.mean[n+(1:n)])
 
-mean(itr[,2] - itr[,1])
+mean(itr[,1] - itr[,2])
 itr_order = (itr[,1] - itr[,2])[order(itr[,1] - itr[,2])]
 quantile(itr_order, 0.025)
 quantile(itr_order, 0.975)
 ```
 
-more easily create test matrices:
+BART wants a `x.test` matrix to be passed in when training the model. To more easily create test matrices:
 
 ```{r}
-library(BART)
-
 # create covariate and treatment vectors
 table(train$partyid)
 covariate_levels = unique(train$partyid)[order(unique(train$partyid))]
@@ -258,19 +249,16 @@ bart =  BART::pbart(x.train = as.data.frame(train %>% select(-Y)),
 ```
 
 ```{r}
-dim(test_bart)
-length(bart$prob.test.mean)
-
 ## turn z-scores into probabilities
 bart$prob.test <- pnorm(bart$yhat.test)
 ## average over the posterior samples
 bart$prob.test.mean <- apply(bart$prob.test, 2, mean)
 
-## place estimates for arms 0-3 next to each other for convenience
+# Split each 'test' dataset
 temp = rep(1:dim(test_design)[1],each=n)
 list_split = split(bart$prob.test.mean, temp)
-lengths(list_split)
 
+# Data for CATE, and lower and upper bound estimates
 estimates = data.frame(matrix(NA,num_levels,4))
 estimates[,1] = covariate_levels
 names(estimates) <- c("covariate_val","mean","low","high")
@@ -294,10 +282,5 @@ ggplot(estimates, aes(x = covariate_levels, y = mean)) +
   scale_x_continuous(breaks=covariate_levels,
         labels=c("Strong Dem","","","Independent","","","Strong Rep"))
 ```
-
-```{r}
-c("hi","","bye")
-```
-
 
 
