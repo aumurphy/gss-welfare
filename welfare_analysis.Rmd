@@ -1,5 +1,5 @@
 ---
-title: "Welfare Survey Analysis"
+title: "Welfare Survey Analysis: BART"
 author: "Austin Murphy"
 date: "6/3/2020"
 output: 
@@ -29,45 +29,45 @@ More info: http://gss.norc.org/Documents/reports/social-change-reports/SC61%20GS
 Variable info: https://gssdataexplorer.norc.org/variables/vfilter
 
 **Covariates**
-- wrkstat: Labor force status: Last week were you working full time, part time, going to school, keeping house, or what?
-- prestg80: Respondents occupational prestige score (1980)
-- hompop: Number of people in the household
+Description of some of the covariates:
+- `wrkstat`: Labor force status: Last week were you working full time, part time, going to school, keeping house, or what?
+- `prestg80`: Respondents occupational prestige score (1980)
+- `hompop`: Number of people in the household
+
   **Race questions**
-On the average (Negroes/Blacks/African-Americans) have worse jobs, income, and housing than white people. Do you think these differences are mainly due to 
-- racdif1: Discrimination?
-- racdif2: Because most (Negroes/Blacks/African-Americans) have less in-born ability to learn?
-- racdif3: Because most (Negroes/Blacks/African-Americans) don't have the chance for education that it takes to rise out of poverty?
-- racdif4: Because most (Negroes/Blacks/African-Americans) just don't have the motivation or will power to pull themselves up out of poverty?
+On the average (Negroes/Blacks/African-Americans) have worse jobs, income, and housing than white people. Do you think these differences are 
+
+- `racdif1`: Mainly due to discrimination?
+- `racdif2`: Because most (Negroes/Blacks/African-Americans) have less in-born ability to learn?
+- `racdif3`: Because most (Negroes/Blacks/African-Americans) don't have the chance for education that it takes to rise out of poverty?
+- `racdif4`: Because most (Negroes/Blacks/African-Americans) just don't have the motivation or will power to pull themselves up out of poverty?
 attblack is an average of the four variables above. 
 
 **Outcome Variables**
 Questions associated with this variable:
 We are faced with many problems in this country, none of which can be solved easily or inexpensively. I'm going to name some of these problems, and for each one I'd like you to name some of these problems, and for each one I'd like you to tell me whether you think we're spending too much money on it, too little money, or about the right amount. First (READ ITEM A) . . . are we spending too much, too little, or about the right amount on (ITEM)?
-- natfare: Welfare vs assistance to the poor. This is the name of the variable on the GSS website converted into Y in this dataset. 
-- natrace{y}: Improving the conditions of Blacks VS Assistance to blacks
+
+- `natfare`: Welfare vs assistance to the poor. This is the name of the variable on the GSS website converted into Y in this dataset. 
+- `natrace{y}`: Improving the conditions of Blacks vs Assistance to blacks
 
 
-```{r loaddata}
+```{r load_data}
 # Downloading script
 # df <- readr::read_csv(file = "https://raw.githubusercontent.com/gsbDBI/ExperimentData/master/Welfare/ProcessedData/welfarenolabel3.csv", na = character())
 # readr::write_csv(df, here::here("data/welfare.csv"))
 
+# Read in provided welfare data
 df <- readr::read_csv(file = here::here("data","welfare.csv"), na = character())
+# Read in additional survey data
 black_assistance <- readr::read_csv(file = here::here("data","black_assistance.csv"))
 df <- 
   df %>% 
   dplyr::left_join(black_assistance)
 
-
 # Specify outcome, treatment, and covariate variable names to use
 outcome_variable_name <- "y" # or y_race for the other outcome variable
 treatment_variable_name <- "w"
-covariate_names <- c("partyid", "hrs1", "income", "rincome", "wrkstat", "wrkslf","age", "polviews",
-                     "educ", "earnrs","wrkslf", "year", 
-                     "marital","sibs","childs", "occ80",  "prestg80", "indus80","res16",
-                     "reg16","mobile16", "family16", "parborn","maeduc","degree","sex",
-                     "race","born","hompop","babies","preteen","teens","adults","attblack")
-
+covariate_names <- c("partyid", "polviews", "age", "educ", "year", "attblack")
 
 # Combine all names
 all_variables_names <- c(outcome_variable_name, treatment_variable_name, covariate_names)
@@ -78,169 +78,90 @@ names(df)[names(df) == outcome_variable_name] <- "Y"
 names(df)[names(df) == treatment_variable_name] <- "W"
 
 dim(df)
-head(df)
 colnames(df)
+head(df)
 ```
 
 
 ```{r data_cleaning}
-# Tried a couple iterations of this to remove missing or 'other' values 
-df <-
+# Filter out missing data
+df <- 
   df %>%
-  filter(partyid != -999,  # missing
-         partyid != 7,     # 7 represents "other party"
-         polviews != -999, # missing
-         polviews != 0,    # 0 represents "not applicable" according to norc.org
-         year != 1987,     # year not included in paper
-         attblack != -999, # missing
-         educ != -999,     # missing
-         income != -999)   # missing
+  filter_all(all_vars(. != -999)) %>%
+  filter(partyid != 7)
+
+# polviews has some values that are 4.1220088 for no reason... remove those
+is.wholenumber <-
+    function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
+df <- df[is.wholenumber(df$polviews),]
 ```
 
-```{r}
-# Percent of rows that are -999 | NA
-round(colSums(df == -999)/dim(df)[1],2)
-colSums(df == -999)
+```{r summary_tables}
+apply(df, 2, table)
+summary(df)
 ```
 
 
-```{r}
-mean(df$Y[df$W == 1]) - mean(df$Y[df$W == 0])
+```{r ATE}
+mean(df$Y[df$W == 0]) - mean(df$Y[df$W == 1])
 # W==1: "Caring for the poor" wording
 # W==0: "Welfare" wording. 
 
 janitor::tabyl(df, year, W) %>%
   arrange(year) %>%
   janitor::adorn_totals()
-
 ```
 
-I'm not sure why this doesn't match up with the Table 1 in the paper. 
-
-Split into training / test
-
-```{r}
-set.seed(1)
-N <- dim(df)[1]
-num_train <- floor(N*.8)
-train_idx <- sample(x=seq(N), size = num_train, replace = FALSE)
-
-train <- df[train_idx,]
-test <- df[-train_idx,]
-```
-
-GRF / causal forest:
-
-```{r}
-# library(grf)
-# X <- as.matrix(train[,c(covariate_names)])
-# Y <- train$Y
-# W <- train$W
-# 
-# X.test <- as.matrix(test[,c(covariate_names)])
-# Y.test <- test$Y
-# W.test <- test$W
-# 
-# cf = grf::causal_forest(X=X, 
-#                         Y=Y, 
-#                         W=W, 
-#                         num.trees = 100) 
-# preds.cf = predict(cf, X.test)$predictions
-```
-
-```{r propensity_histogram}
-# ggplot(data.frame(W.hat = cf$W.hat, W = factor(cf$W.orig))) +
-#  geom_histogram(aes(x = W.hat, y = stat(density), fill = W), alpha=0.3, position = "identity") +
-#  geom_density(aes(x = W.hat, color = W)) +
-#  xlim(0,1) +
-#  labs(title = "Causal forest propensity scores",
-#       caption = "The propensity scores are learned via GRF's regression forest")
-```
-
-```{r}
-# oob_pred <- predict(cf, estimate.variance=TRUE)
-# head(oob_pred)
-```
-
-
-```{r}
-# hist(preds.cf)
-```
-
-
-```{r}
-####### BART
-# bayesTrees - original package from paper authors
-# bartMachine
-# BART package - from authors
-```
+This doesn't match up with the paper's table, but it's close. 
 
 The paper used a probit BART model to estimate CATE because the response is binary. 
 
-Can I replicate the findings in the paper?
+BART wants a `x.test` matrix to be passed in when training the model. According to the paper, for each value of the covariate of interest, you create two copy of the training set. For each copy, set the covariate of interest to the value in question and set the treatment indicator to 0 for one copy and 1 to the other. 
 
-```{r}
-train <- df
+To more easily create test matrices, we'll create two copies for each level in which we're interested.:
 
-summary(train$partyid)
-table(train$partyid)
-
-# prep 'test' data
-n = dim(train)[1]
-test0 = train %>% select(-Y); test0[ , 'partyid'] = 4; test0[ , 'W'] = 0
-test1 = train %>% select(-Y); test1[ , 'partyid'] = 4; test1[ , 'W'] = 1
-
-test_bart = rbind(test0, test1)
-
-set.seed(1)
-bart =  BART::pbart(x.train = as.data.frame(train %>% select(-Y)),
-                    y.train = train$Y,
-                    x.test = as.data.frame(test_bart),
-                    nskip = 1000)
-
-```
-
-```{r}
-dim(test_bart)
-length(bart$prob.test.mean)
-
-## turn z-scores into probabilities
-bart$prob.test <- pnorm(bart$yhat.test)
-## average over the posterior samples
-bart$prob.test.mean <- apply(bart$prob.test, 2, mean)
-
-## place estimates for arms 0-3 next to each other for convenience
-itr <- cbind(bart$prob.test.mean[(1:n)], bart$prob.test.mean[n+(1:n)])
-
-mean(itr[,1] - itr[,2])
-itr_order = (itr[,1] - itr[,2])[order(itr[,1] - itr[,2])]
-quantile(itr_order, 0.025)
-quantile(itr_order, 0.975)
-```
-
-BART wants a `x.test` matrix to be passed in when training the model. To more easily create test matrices:
-
-```{r}
-# create covariate and treatment vectors
-table(train$partyid)
-covariate_levels = unique(train$partyid)[order(unique(train$partyid))]
-num_levels = length(covariate_levels)
-treatment_values = c(0,1)
-test_design = cbind(rep(covariate_levels,each=2), rep(treatment_values,times=num_levels))
-
-# prep 'test' data
-n = dim(train)[1]
-column_name = 'partyid'
-test_bart = NULL
-for (i in 1:dim(test_design)[1]){
-  test0 = train %>% select(-Y)
-  test0[ , column_name] = test_design[i,1]
-  test0[ , 'W'] = test_design[i,2]
+```{r create_test_matrix}
+create_test_matrix <- function(df, column_name, covariate_levels){
+  # Get unique values
+  # covariate_levels = unique(df[[column_name]][order(df[column_name])])
+  num_levels = length(covariate_levels)
+  treatment_values = c(0,1)
+  # Create a 'design matrix', with each row representing the pair of covariate value and treatment value used in filling the test matrix
+  # first column: covariate value, second column: treatment level
+  test_design = cbind(rep(covariate_levels,each=2), 
+                      rep(treatment_values,times=num_levels))
+  print(test_design)
   
-  test_bart=rbind(test_bart,test0)
+  # prep 'test' data. Large matrix of size (num values of interest * 2 * N) x ncols
+  n = nrow(df)
+  test_bart = NULL
+  for (i in 1:nrow(test_design)){
+    test0 = train %>% select(-Y)
+    test0[ , column_name] = test_design[i,1]
+    test0[ , 'W'] = test_design[i,2]
+    
+    test_bart = rbind(test_bart,test0)
+  }
+  dim(test_bart)
+  return(list(test_design, test_bart))
 }
-dim(test_bart)
+```
 
+## Party ID (partyid)
+
+```{r partyid_bart}
+train <- df
+column_name = "partyid"
+table(df[[column_name]])
+summary(df[[column_name]])
+
+covariate_values = seq(0,6)
+print(covariate_values)
+
+out <- create_test_matrix(df, column_name, covariate_levels = covariate_values)
+test_design = out[[1]]; test_bart = out[[2]]
+
+# Train BART model
 set.seed(1)
 bart =  BART::pbart(x.train = as.data.frame(train %>% select(-Y)),
                     y.train = train$Y,
@@ -248,39 +169,209 @@ bart =  BART::pbart(x.train = as.data.frame(train %>% select(-Y)),
                     nskip = 1000)
 ```
 
-```{r}
-## turn z-scores into probabilities
-bart$prob.test <- pnorm(bart$yhat.test)
-## average over the posterior samples
-bart$prob.test.mean <- apply(bart$prob.test, 2, mean)
+A function to create the CATE estimates from the BART model output
 
-# Split each 'test' dataset
-temp = rep(1:dim(test_design)[1],each=n)
-list_split = split(bart$prob.test.mean, temp)
+```{r calc_cate}
+calculate_cate <- function(bart, test_design){
+  ## turn z-scores into probabilities
+  print("Transforming to probabilities")
+  bart$prob.test <- pnorm(bart$yhat.test)
+  ## average over the posterior samples
+  batch_indices = seq(1, to=ncol(bart$prob.test)+1, length.out=nrow(test_design)+1)
+  # save memory
+  bart$yhat.test <- NULL
 
-# Data for CATE, and lower and upper bound estimates
-estimates = data.frame(matrix(NA,num_levels,4))
-estimates[,1] = covariate_levels
-names(estimates) <- c("covariate_val","mean","low","high")
-for (i in 1:dim(estimates)[1]){
-  covariate_val = 2*i-1
-  cate = list_split[[covariate_val]] - list_split[[covariate_val+1]] 
-  cate = cate[order(cate)]
-  estimates[i,"mean"] = mean(cate)
-  estimates[i,"low"] = quantile(cate, 0.025)
-  estimates[i,"high"] = quantile(cate, 0.975)
+  
+  print("Averaging each batch")
+  avg_post_draws = as.data.frame(matrix(NA, 1000, length(batch_indices)-1))
+  for (i in 1:(length(batch_indices)-1)){
+    # Select the data from one 1000xN dataframe
+    batch = bart$prob.test[ , batch_indices[i]:(batch_indices[i+1]-1) ]
+    # average over the observations to get E[CATE]
+    avg_batch = apply(batch, 1, mean)
+    # sanity check: should be of length 1000
+    length(avg_batch) == 1000
+    
+    avg_post_draws[, i] = avg_batch
+  }
+  dim(avg_post_draws) # should be 1000 x 2*number of point estimates
+  
+  # save memory
+  bart$prob.test <- NULL
+  
+  print("Estimating CATEs")
+  ## Summary dataframe for CATE, and lower and upper bound estimates
+  covariate_levels = unique(test_design[,1])
+  estimates = data.frame(matrix(NA, length(covariate_levels), 4))
+  estimates[,1] = covariate_levels
+  names(estimates) <- c("covariate_val","mean","low","high")
+  # Loop through the posterior draws and calculate the difference between them. 
+  # Calculate average CATE and 95% posterior bands. 
+  for (i in 1:dim(estimates)[1]){
+    covariate_val = 2*i-1
+    cate = avg_post_draws[, covariate_val] - avg_post_draws[, covariate_val+1]
+    cate = cate[order(cate)]
+    estimates[i,"mean"] = mean(cate)
+    estimates[i,"low"] = quantile(cate, 0.025)
+    estimates[i,"high"] = quantile(cate, 0.975)
+  }
+  return(estimates)
 }
-estimates
+```
 
-ggplot(estimates, aes(x = covariate_levels, y = mean)) + 
+Estimate on partyid
+
+```{r partyid_cate}
+estimates <- calculate_cate(bart=bart, 
+                            test_design=test_design)
+```
+
+Let's see how it looks:
+
+```{r plot_partyid}
+# Plot the CATE estimates
+ggplot(estimates, aes(x = covariate_val, y = mean)) + 
   geom_line() + 
   geom_point() + 
-  geom_ribbon(aes(ymin=low,ymax=high),alpha=0.3) + 
-  ggtitle("CATE Estimate",column_name) + 
-  xlab(column_name) + 
+  geom_ribbon(aes(ymin=low, ymax=high), alpha=0.3) + 
+  ggtitle("CATE Estimate: Party Identification") + 
+  xlab("") +
   ylab("CATE") +
-  scale_x_continuous(breaks=covariate_levels,
+  scale_x_continuous(breaks=covariate_values,
         labels=c("Strong Dem","","","Independent","","","Strong Rep"))
 ```
+
+## Political Views
+
+Now for Political Views (polviews)
+
+```{r polviews_bart}
+column_name = "polviews"
+table(df[[column_name]])
+summary(df[[column_name]])
+
+covariate_values = seq(1,7)
+print(covariate_values)
+
+out <- create_test_matrix(df, column_name, covariate_levels = covariate_values)
+test_design = out[[1]]; test_bart = out[[2]]
+
+# Train BART model
+rm(bart)
+set.seed(1)
+bart =  BART::pbart(x.train = as.data.frame(train %>% select(-Y)),
+                    y.train = train$Y,
+                    x.test = as.data.frame(test_bart),
+                    nskip = 1000)
+```
+
+```{r polviews_cate}
+estimates <- calculate_cate(bart=bart, 
+                            test_design=test_design)
+```
+
+```{r plot_polviews}
+# Plot the CATE estimates
+ggplot(estimates, aes(x = covariate_val, y = mean)) + 
+  geom_line() + 
+  geom_point() + 
+  geom_ribbon(aes(ymin=low, ymax=high), alpha=0.3) + 
+  ggtitle("CATE Estimate: Political Views") + 
+  xlab("") +
+  ylab("CATE") +
+  scale_x_continuous(breaks=covariate_values,
+        labels=c("Extremely Lib","","","Moderate","","","Extremely Cons"))
+```
+
+
+## Age
+
+Now for Age (age)
+
+```{r age_bart}
+column_name = "age"
+table(df[[column_name]])
+summary(df[[column_name]])
+
+covariate_values = seq(18,89,by=5)
+print(covariate_values)
+
+out <- create_test_matrix(df, column_name, covariate_levels = covariate_values)
+test_design = out[[1]]; test_bart = out[[2]]
+
+# Train BART model
+rm(bart)
+set.seed(1)
+bart =  BART::pbart(x.train = as.data.frame(train %>% select(-Y)),
+                    y.train = train$Y,
+                    x.test = as.data.frame(test_bart),
+                    nskip = 1000)
+```
+
+```{r age_cate}
+estimates <- calculate_cate(bart=bart, 
+                            test_design=test_design)
+```
+
+```{r plot_age}
+# Plot the CATE estimates
+ggplot(estimates, aes(x = covariate_val, y = mean)) + 
+  geom_line() + 
+  geom_point() + 
+  geom_ribbon(aes(ymin=low, ymax=high), alpha=0.3) + 
+  ggtitle("CATE Estimate: Age") + 
+  xlab("Age") +
+  ylab("CATE") +
+  scale_x_continuous(breaks=covariate_values,
+        labels=covariate_values)
+```
+
+## Negative Attitude Towards Blacks
+
+```{r attblack_bart}
+column_name = "attblack"
+table(df[[column_name]])
+summary(df[[column_name]])
+
+covariate_values = unique(df[[column_name]])[order(unique(df[[column_name]]))]
+print(covariate_values)
+
+out <- create_test_matrix(df, column_name, covariate_levels = covariate_values)
+test_design = out[[1]]; test_bart = out[[2]]
+
+# Train BART model
+rm(bart)
+set.seed(1)
+bart =  BART::pbart(x.train = as.data.frame(train %>% select(-Y)),
+                    y.train = train$Y,
+                    x.test = as.data.frame(test_bart),
+                    nskip = 1000)
+```
+
+```{r attblack_cate}
+estimates <- calculate_cate(bart=bart, 
+                            test_design=test_design)
+```
+
+```{r plot_attblack}
+# Plot the CATE estimates
+ggplot(estimates, aes(x = covariate_val, y = mean)) + 
+  geom_line() + 
+  geom_point() + 
+  geom_ribbon(aes(ymin=low, ymax=high), alpha=0.3) + 
+  ggtitle("CATE Estimate: Attitude Towards Blacks") + 
+  xlab("Attitude Towards Blacks") +
+  ylab("CATE") +
+  scale_x_continuous(breaks=covariate_values,
+        labels=round(covariate_values,2))
+```
+
+
+
+
+
+
+
+
 
 
