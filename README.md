@@ -1,2 +1,2 @@
 # gss-welfare
-Conditional Average Treatment Effect Estimation of GSS Survey of Spending on Welfare
+Conditional Average Treatment Effect Estimation of US Attitude on Welfare Assistance
