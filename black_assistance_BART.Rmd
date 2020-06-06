@@ -1,64 +1,92 @@
 ---
-title: "Welfare Survey Analysis: BART"
-author: "Austin Murphy"
-date: "6/3/2020"
-output: 
+title: 'GSS Spending Survey Analysis: HTE Comparison using Bayesian Additive Regression
+  Trees'
+author: "Austin Murphy, Fred Lu"
+date: "6/5/2020"
+output:
   html_document:
-    toc: true
-    toc_depth: 2
-    theme: united
     highlight: tango
+    theme: united
+    toc: yes
+    toc_depth: 2
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+always_allow_html: true
 ---
 
-```{r setup, include=FALSE}
+```{r setup, echo=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
+  eval = TRUE,
   warning = FALSE,
   message = FALSE)
-
-library(here)       # File location
-library(ggplot2)    # Plotting
-library(dplyr)      # Data Manip
-library(BART)
 ```
 
-## Intro
+```{r packages}
+library(here)        # File location
+library(ggplot2)     # Plotting
+library(BART)        # for BART models
+library(fBasics)     # Summary statistics (3042.89)
+library(kableExtra)  # Prettier RMarkdown (1.0.1)
+library(dplyr)       # Data Manip
+```
 
-Studying the Welfare data. This analysis mirrors the original paper's analysis of the Welfare question, but rather with a question on helping the African American community. 
+# Project Description
 
-More info: http://gss.norc.org/Documents/reports/social-change-reports/SC61%20GSS_Trends%20in%20Spending_1973-2016.pdf
+This analysis studies the response to spending questions from the General Social Survey (GSS), influenced by the analysis done in [Modeling Heterogeneous Treatment Effects in Survey Experiments with Bayesian Additive Regression Trees](http://www.donaldgreen.com/wp-content/uploads/2015/09/BART-Green-Kern-POQ-2012.pdf). In that paper, Green and Kern analyzed the well-established American dislike of programs labeled as 'welfare' by comparing how many respondents believe that the United States is spending too much money on 'welfare programs' vs how many respondents believe that the United States is spending too much money on 'assisting the poor'. 
 
-Variable info: https://gssdataexplorer.norc.org/variables/vfilter
+## Project Question
+
+In this analysis, we calculate heterogeneous treatment effects of respondents preferences for a government spending on assisting African Americans. The text of the question is given below, and respondents were given one of the two options: 
+
+> We are faced with many problems in this country, none of which can be solved easily or inexpensively. I'm going to name some of these problems, and for each one I'd like you to tell me whether you think we're spending too much money on it, too little money, or about the right amount... Are we spending too much, too little, or about the right amount on **Improving the conditions of Blacks** or **Assistance to Blacks**
+>
+- Too little
+- About right
+- Too much
+- Don't know
+
+We analyze the conditional average treatment effect of how many respondents selected 'Too much' is being spent on "Improving the conditions of Blacks" vs how many respondents selected 'Too much' is being spent on "Assistance to Blacks".
+
+## The Data
+
+The data for this analysis is from the [GSS Data Explorer tool](https://gssdataexplorer.norc.org/). 
+
+Part of our data comes from the Welfare dataset provided in the [GSB Digital Business Initiative causal dataset GitHub](https://github.com/gsbDBI/ExperimentData). This part of the data has a number of covariates taken from the GSS website including demographic information and responses to other questions. We then pulled the response from the question described above and matched the responses to the individuals (in the GSS platform, the corresponding variables are `natrace` and `natracey`). 
+
+For more information on the questions and formatting of the questions on Trends in National Spending Priorities, 1973-2016, see [this document](http://gss.norc.org/Documents/reports/social-change-reports/SC61%20GSS_Trends%20in%20Spending_1973-2016.pdf). Specific information on variables of interest can be viewed [here](https://gssdataexplorer.norc.org/variables/vfilter).
+
+We used the same dates as given in the Green and Kern paper, limiting to most surveys distributed from 1986-2010. 
+
+A description of the variables used in this analysis:
 
 **Covariates**
-Description of some of the covariates:
-- `wrkstat`: Labor force status: Last week were you working full time, part time, going to school, keeping house, or what?
-- `prestg80`: Respondents occupational prestige score (1980)
-- `hompop`: Number of people in the household
 
-  **Race questions**
-On the average (Negroes/Blacks/African-Americans) have worse jobs, income, and housing than white people. Do you think these differences are 
+- `partyid`: "Generally speaking, do you usually think of yourself as a Republican, Democrat, Independent, or what?" using a 7-point scale. 
+- `polviews`: A rating of one's political views on a 7 point scale, from extremely liberal--point 1--to extremely conservative--point 7. 
+- `age`:  Age of respondent
+- `educ`: Level of education attained by the respondent
+- `attblack`: A measure of one's attitude towards African Americans. This metric was calculated by taking the average of responses to four questions (with question id given as `racdif{1|2|3|4}`), worded as follows: 
 
-- `racdif1`: Mainly due to discrimination?
-- `racdif2`: Because most (Negroes/Blacks/African-Americans) have less in-born ability to learn?
-- `racdif3`: Because most (Negroes/Blacks/African-Americans) don't have the chance for education that it takes to rise out of poverty?
-- `racdif4`: Because most (Negroes/Blacks/African-Americans) just don't have the motivation or will power to pull themselves up out of poverty?
-attblack is an average of the four variables above. 
+> On the average (Negroes/Blacks/African-Americans) have worse jobs, income, and housing than white people. Do you think these differences are 
+>
+  - Mainly due to discrimination?
+  - Because most (Negroes/Blacks/African-Americans) have less in-born ability to learn?
+  - Because most (Negroes/Blacks/African-Americans) don't have the chance for education that it takes to rise out of poverty?
+  - Because most (Negroes/Blacks/African-Americans) just don't have the motivation or will power to pull themselves up out of poverty?
 
-**Outcome Variables**
-Questions associated with this variable:
-We are faced with many problems in this country, none of which can be solved easily or inexpensively. I'm going to name some of these problems, and for each one I'd like you to tell me whether you think we're spending too much money on it, too little money, or about the right amount. First (READ ITEM A) . . . are we spending too much, too little, or about the right amount on (ITEM)?
+**Treatment Indicator**
 
-- `natfare`: Welfare vs assistance to the poor. This is the name of the variable on the GSS website converted into Y in this dataset. 
-- `natrace{y}`: Improving the conditions of Blacks vs Assistance to Blacks
+- `W`: An indicator whether the respondent received the question that the government is spending too much money on "Improving the conditions of Blacks" (W==0) or "Assistance to Blacks" (W==1).
 
-Note: 
-- W==0: Improving the conditions of Blacks
-- W==1; Assistance to Blacks
+**Outcome Varible**
+
+- `Y`: binary outcome, whether the respondent said the government was spending too much.
 
 
 ```{r load_data}
-# Downloading script
+## Downloading script
 # df <- readr::read_csv(file = "https://raw.githubusercontent.com/gsbDBI/ExperimentData/master/Welfare/ProcessedData/welfarenolabel3.csv", na = character())
 # readr::write_csv(df, here::here("data/welfare.csv"))
 
@@ -66,17 +94,18 @@ Note:
 df <- readr::read_csv(file = here::here("data","welfare.csv"), na = character())
 # Read in additional survey data
 black_assistance <- readr::read_csv(file = here::here("data","black_assistance.csv"))
+# Merge on year, id. 
 df <- 
   df %>% 
   dplyr::left_join(black_assistance)
 
 # Specify outcome, treatment, and covariate variable names to use
-outcome_variable_name <- "y_race" # or y_race for the other outcome variable
+outcome_variable_name <- "y_race" # removing y from welfare.csv. 
 treatment_variable_name <- "w"
 covariate_names <- c("partyid", "polviews", "age", "educ", "year", "attblack")
 
 # Combine all names
-all_variables_names <- c(outcome_variable_name, treatment_variable_name, covariate_names)
+all_variables_names <- c(covariate_names, outcome_variable_name, treatment_variable_name)
 df <- df[, which(names(df) %in% all_variables_names)]
 
 # Rename variables
@@ -84,45 +113,107 @@ names(df)[names(df) == outcome_variable_name] <- "Y"
 names(df)[names(df) == treatment_variable_name] <- "W"
 
 # Flip Y...
-
-dim(df)
-names(df)
-head(df)
 ```
 
+The original dataframe has `r nrow(df)` responses. 
+
+### Filtering out missing data and non-responses
 
 ```{r data_cleaning}
 # Filter out missing data
 df <- 
   df %>%
   filter_all(all_vars(. != -999)) %>%
-  filter(partyid != 7)
+  filter(partyid != 7) # partyid==7 is equivalent to I'm not sure
 
 # polviews has some values that are 4.1220088 for no reason... remove those
 is.wholenumber <-
     function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
+
 df <- df[is.wholenumber(df$polviews),]
 ```
 
-```{r summary_tables}
+After filtering out missing and incorrect encodings, the data has `r nrow(df)` responses. 
+
+Here's a brief description table of the variables
+
+```{r summary_stats, results="asis", message=FALSE, echo=TRUE}
+# Make a data.frame containing summary statistics of interest
+summ_stats <- fBasics::basicStats(df)
+summ_stats <- as.data.frame(t(summ_stats))
+
+# Rename some of the columns for convenience
+summ_stats <- summ_stats[c("Mean", "Stdev", "Minimum", "1. Quartile", "Median",  "3. Quartile", "Maximum")] %>% 
+  rename("Lower quartile" = '1. Quartile', "Upper quartile"= "3. Quartile")
+
+```
+
+```{r summary_stats_table, results="asis", message=FALSE, echo=FALSE}
+# Pretty-printing in HTML
+summ_stats_table <- kable(summ_stats, "html", digits = 2)
+kable_styling(summ_stats_table,
+              bootstrap_options=c("striped", "hover", "condensed", "responsive"),
+              full_width=FALSE)
+```
+
+```{r summary_tables, include=FALSE}
 apply(df, 2, table)
 summary(df)
 ```
 
+For a comparison of the number of resondents per year with the paper:
+
+```{r year_w_table}
+year_w_tab <- 
+  janitor::tabyl(df, year, W) %>%
+  arrange(year) %>%
+  janitor::adorn_totals()
+```
+
+```{r year_w_table2, results="asis", message=FALSE, echo=FALSE}
+# Pretty-printing in HTML
+summ_stats_table <- kable(year_w_tab, 
+                          "html", 
+                          digits = 2,
+                          col.names = c("Year", 
+                                        "Improving the Conditions of Blacks", 
+                                        "Assistance to Blacks")) %>%
+  column_spec(2:3, width = "2cm") %>%
+  column_spec(1, width = "1cm")
+kable_styling(summ_stats_table,
+              bootstrap_options=c("striped", "hover", "condensed", "responsive"),
+              full_width=FALSE) 
+```
+
+This doesn't match up with the paper's table, but the paper gives no indication of how they filtered or subset the data. 
+
+Given that the survey was a randomized experiment, we calculate the ATE by difference in means:
 
 ```{r ATE}
 mean(df$Y[df$W == 0]) - mean(df$Y[df$W == 1])
 # Note: 
 # - W==0: Improving the conditions of Blacks
 # - W==1; Assistance to Blacks
-# Y[W==0] - Y[W==1]: Positive if if we're spending too much on improving the conditions of Blacks compared with "Assisting Blacks"
+# Y[W==0] - Y[W==1]: Positive if we're spending too much on "improving the conditions of Blacks" compared with "Assisting Blacks"
 
-janitor::tabyl(df, year, W) %>%
-  arrange(year) %>%
-  janitor::adorn_totals()
+# Y[W==1] - Y[W==0]: Positive if we're spending too much on "Assisting Blacks" vs "improving the conditions of Blacks" compared with 
 ```
 
-This doesn't match up with the paper's table, but it's close. 
+Given this, we take the negative of the response variable to offer a more easily interpretable outcome. 
+```{r}
+df$W <- ifelse(df$W==0, 1, 0)
+mean(df$Y[df$W == 0]) - mean(df$Y[df$W == 1])
+```
+
+```{r setup2, echo=FALSE, eval=FALSE}
+# knitr::opts_chunk$set(
+#   echo = TRUE,
+#   eval = FALSE,
+#   warning = FALSE,
+#   message = FALSE)
+```
+
+# Bayesian Additive Regression Trees (BART)
 
 The paper used a probit BART model to estimate CATE because the response is binary. 
 
@@ -140,7 +231,7 @@ create_test_matrix <- function(df, column_name, covariate_levels){
   # first column: covariate value, second column: treatment level
   test_design = cbind(rep(covariate_levels,each=2), 
                       rep(treatment_values,times=num_levels))
-  print(test_design)
+  # print(test_design)
   
   # prep 'test' data. Large matrix of size (num values of interest * 2 * N) x ncols
   n = nrow(df)
@@ -157,16 +248,17 @@ create_test_matrix <- function(df, column_name, covariate_levels){
 }
 ```
 
-## Party ID (partyid)
+## Party Identification
+
+We first compute the CATE estimate for all values on the 7-point scale for Party Identification.
 
 ```{r partyid_bart}
 train <- df
 column_name = "partyid"
 table(df[[column_name]])
-summary(df[[column_name]])
 
 covariate_values = seq(0,6)
-print(covariate_values)
+# print(covariate_values)
 
 out <- create_test_matrix(df, column_name, covariate_levels = covariate_values)
 test_design = out[[1]]; test_bart = out[[2]]
@@ -253,15 +345,14 @@ ggplot(estimates, aes(x = covariate_val, y = mean)) +
 
 ## Political Views
 
-Now for Political Views (polviews)
+Now for Political Views 
 
 ```{r polviews_bart}
 column_name = "polviews"
 table(df[[column_name]])
-summary(df[[column_name]])
 
 covariate_values = seq(1,7)
-print(covariate_values)
+# print(covariate_values)
 
 out <- create_test_matrix(df, column_name, covariate_levels = covariate_values)
 test_design = out[[1]]; test_bart = out[[2]]
@@ -301,10 +392,9 @@ Now for Age (age)
 ```{r age_bart}
 column_name = "age"
 table(df[[column_name]])
-summary(df[[column_name]])
 
 covariate_values = seq(18,89,by=5)
-print(covariate_values)
+# print(covariate_values)
 
 out <- create_test_matrix(df, column_name, covariate_levels = covariate_values)
 test_design = out[[1]]; test_bart = out[[2]]
@@ -336,15 +426,14 @@ ggplot(estimates, aes(x = covariate_val, y = mean)) +
         labels=covariate_values)
 ```
 
-## Negative Attitude Towards Blacks
+## Attitude Towards Blacks
 
 ```{r attblack_bart}
 column_name = "attblack"
 table(df[[column_name]])
-summary(df[[column_name]])
 
 covariate_values = unique(df[[column_name]])[order(unique(df[[column_name]]))]
-print(covariate_values)
+# print(covariate_values)
 
 out <- create_test_matrix(df, column_name, covariate_levels = covariate_values)
 test_design = out[[1]]; test_bart = out[[2]]
